@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOD·SENTINEL</title>
+  <meta name="description" content="AI-powered server moderation. Analyze messages for rule violations." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; }
+    body {
+      background: #050a10;
+      color: #c0d4e8;
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      min-height: 100vh;
+    }
+
+    .grid-bg {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        linear-gradient(#0d2040 1px, transparent 1px),
+        linear-gradient(90deg, #0d2040 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.2;
+    }
+
+    #app {
+      position: relative; z-index: 1;
+      max-width: 660px;
+      margin: 0 auto;
+      padding: 28px 16px 60px;
+    }
+
+    .header { text-align: center; margin-bottom: 28px; }
+    .header-sub { font-family: 'Rajdhani', sans-serif; font-size: 8px; letter-spacing: 5px; color: #1a4060; margin-bottom: 8px; }
+    .header h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(26px, 8vw, 42px); font-weight: 900;
+      background: linear-gradient(135deg, #00ccff 0%, #0066ff 60%, #0033cc 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: 4px; line-height: 1; margin-bottom: 4px;
+    }
+    .header-version { font-family: 'Rajdhani', sans-serif; font-size: 8px; color: #1a3050; letter-spacing: 3px; }
+    .status-row { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 12px; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #00e87a; box-shadow: 0 0 8px #00e87a; }
+    .status-dot.active { animation: pulse 1.4s ease-in-out infinite; }
+    .status-label { font-family: 'Rajdhani', sans-serif; font-size: 9px; color: #1e4a2a; letter-spacing: 3px; }
+
+    .panel { background: #080e18; border: 1px solid #142236; border-radius: 8px; position: relative; overflow: hidden; margin-bottom: 12px; }
+    .panel::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, #1e4070, transparent); }
+    .panel-body { padding: 16px; }
+    .section-label { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 9px; letter-spacing: 4px; color: #0055aa; margin-bottom: 12px; }
+
+    .key-input-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .key-input {
+      flex: 1; background: #040810; border: 1px solid #142236; color: #90b8d8;
+      font-family: 'Share Tech Mono', monospace; font-size: 12px;
+      padding: 10px 12px; border-radius: 6px; outline: none; transition: border-color 0.2s;
+    }
+    .key-input:focus { border-color: #0077cc; }
+    .key-input::placeholder { color: #2a4060; }
+    .key-save-btn {
+      background: #020810; border: 1px solid #0055aa; color: #00aaff;
+      font-family: 'Rajdhani', sans-serif; font-size: 11px; font-weight: 700;
+      letter-spacing: 2px; padding: 10px 16px; border-radius: 6px; cursor: pointer;
+      transition: all 0.2s; white-space: nowrap;
+    }
+    .key-save-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .key-hint { font-size: 9px; color: #3a5570; line-height: 1.6; margin-bottom: 10px; }
+    .key-hint a { color: #0088cc; }
+    .key-error { font-size: 9px; color: #ff3b5c; margin-top: 5px; display: none; }
+    .key-set-btn {
+      display: none; width: 100%; text-align: right; background: none; border: none;
+      cursor: pointer; font-family: 'Rajdhani', sans-serif; font-size: 9px;
+      letter-spacing: 2px; color: #2a5060; padding: 0 2px 8px; transition: color 0.2s;
+    }
+    .key-set-btn:hover { color: #4a7888; }
+
+    .toggle-btn {
+      width: 100%; background: #080e18; border: 1px solid #142236;
+      color: #405870; font-family: 'Rajdhani', sans-serif; font-size: 11px; font-weight: 700;
+      letter-spacing: 2px; padding: 11px 14px; cursor: pointer; text-transform: uppercase;
+      border-radius: 8px; display: flex; align-items: center; justify-content: space-between;
+      transition: all 0.2s;
+    }
+    .toggle-btn:hover { border-color: #1e4060; color: #506880; }
+    .toggle-btn.open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-color: #0055aa33; }
+    .toggle-arrow { color: #0055aa; font-size: 11px; transition: transform 0.25s; display: inline-block; }
+    .toggle-arrow.open { transform: rotate(90deg); }
+    .toggle-body { background: #040810; border: 1px solid #0055aa22; border-top: none; border-radius: 0 0 8px 8px; padding: 12px; display: none; }
+    .toggle-body.open { display: block; }
+
+    textarea {
+      width: 100%; background: #040810; border: 1px solid #142236;
+      color: #90b8d8; font-family: 'Share Tech Mono', monospace; font-size: 13px;
+      resize: none; outline: none; padding: 12px; border-radius: 6px;
+      transition: border-color 0.2s, box-shadow 0.2s; line-height: 1.65; display: block;
+    }
+    textarea:focus { border-color: #0077cc; box-shadow: 0 0 0 2px #0077cc1a, inset 0 0 20px #001833; }
+    textarea::placeholder { color: #2a4060; }
+    .char-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 9px; letter-spacing: 1px; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .tab-btn {
+      flex: 1; background: #040810; border: 1px solid #142236;
+      color: #405870; font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700;
+      letter-spacing: 2px; padding: 10px 6px; cursor: pointer;
+      transition: all 0.2s; text-transform: uppercase; border-radius: 6px;
+    }
+    .tab-btn.active { background: #081a30; border-color: #0077cc; color: #00aaff; box-shadow: inset 0 0 20px #001833; }
+    .tab-btn:hover:not(.active) { border-color: #1e4060; color: #506888; }
+
+    .drop-zone {
+      border: 2px dashed #142236; border-radius: 8px; background: #040810;
+      cursor: pointer; text-align: center; padding: 32px 16px; transition: all 0.25s;
+    }
+    .drop-zone:hover, .drop-zone.over { border-color: #0077cc; background: #040f1c; }
+    .drop-zone-icon { font-size: 32px; opacity: 0.12; margin-bottom: 12px; }
+    .drop-zone-label { font-family: 'Rajdhani', sans-serif; font-size: 11px; font-weight: 700; color: #304a60; letter-spacing: 2px; }
+    .drop-zone-sub { font-size: 9px; color: #1a3050; margin-top: 6px; }
+
+    #analyze-btn {
+      width: 100%; background: #020810; border: 1px solid #0055aa; color: #00aaff;
+      font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700;
+      letter-spacing: 4px; padding: 17px; cursor: pointer; text-transform: uppercase;
+      border-radius: 8px; transition: all 0.25s; margin-bottom: 14px;
+    }
+    #analyze-btn:hover:not(:disabled) { border-color: #0088ff; box-shadow: 0 0 20px #0055aa44; }
+    #analyze-btn:active:not(:disabled) { transform: scale(0.99); }
+    #analyze-btn:disabled { opacity: 0.25; cursor: not-allowed; border-color: #0d2040; color: #2a4060; }
+
+    #scan-box {
+      display: none; position: relative; overflow: hidden;
+      border-radius: 6px; background: #060c14; border: 1px solid #1a3050;
+      padding: 28px 16px; text-align: center; margin-bottom: 14px;
+    }
+    .scanbar {
+      position: absolute; left: 0; width: 100%; height: 3px;
+      background: linear-gradient(90deg, transparent, #0088ff88, #00ccff, #0088ff88, transparent);
+      animation: scan 1.4s linear infinite;
+    }
+    .scan-text { font-size: 11px; color: #0088ff; letter-spacing: 4px; font-weight: 700; margin-bottom: 6px; }
+    .scan-sub { font-size: 9px; color: #2a4060; letter-spacing: 2px; }
+
+    #result-box { display: none; }
+    .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .verdict-grid { display: grid; grid-template-columns: 96px 1fr; gap: 14px; margin-bottom: 18px; align-items: center; }
+    .ring-wrap { text-align: center; }
+    .ring-label { font-family: 'Rajdhani', sans-serif; font-size: 8px; color: #2a4060; letter-spacing: 2px; margin-top: 4px; }
+    .verdict-cards { display: flex; flex-direction: column; gap: 10px; }
+    .verdict-card { border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+    .card-sub { font-family: 'Rajdhani', sans-serif; font-size: 8px; color: #3a5570; letter-spacing: 2px; margin-bottom: 2px; }
+    .card-label { font-family: 'Orbitron', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+    .card-desc { font-size: 9px; color: #3a5570; margin-top: 1px; }
+    .action-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    .conf-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+    .conf-label { font-family: 'Rajdhani', sans-serif; font-size: 9px; color: #2a4060; letter-spacing: 2px; }
+    .bar-track { height: 4px; background: #0a1520; border-radius: 3px; margin-bottom: 16px; }
+    .bar-fill { height: 100%; border-radius: 3px; transition: width 1.3s cubic-bezier(0.16,1,0.3,1); width: 0; }
+
+    .result-section-label { font-family: 'Rajdhani', sans-serif; font-size: 9px; letter-spacing: 3px; color: #2a4060; margin-bottom: 8px; }
+    .vtag {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #1e0a10; border: 1px solid #5a1a2a; color: #cc5566;
+      font-size: 10px; padding: 4px 10px; border-radius: 4px; margin: 3px 3px 0 0;
+      font-family: 'Rajdhani', sans-serif; font-weight: 700;
+    }
+    .quote-box {
+      border-radius: 0 6px 6px 0; padding: 10px 14px;
+      font-size: 12px; font-style: italic; line-height: 1.6; color: #cc7788;
+      background: #120408; border: 1px solid #3a1020; margin-bottom: 16px;
+    }
+    .reasoning-box {
+      background: #040810; border: 1px solid #0d1e30;
+      padding: 12px 14px; border-radius: 6px; font-size: 12px;
+      color: #7a9db8; line-height: 1.8;
+    }
+    .error-msg { color: #ff3b5c; font-family: 'Rajdhani', sans-serif; font-size: 13px; text-align: center; padding: 20px; letter-spacing: 1px; }
+
+    .copy-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #040810; border: 1px solid #1a3050; color: #3a5870;
+      font-family: 'Rajdhani', sans-serif; font-size: 10px; font-weight: 700;
+      letter-spacing: 2px; padding: 7px 12px; border-radius: 5px; cursor: pointer;
+      text-transform: uppercase; transition: all 0.2s;
+    }
+    .copy-btn:hover { border-color: #0055aa; color: #0088cc; }
+    .copy-btn.done { border-color: #00e87a55; color: #00e87a; }
+
+    #history-wrap { margin-top: 14px; display: none; }
+    .history-item {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      background: transparent; border: none; border-bottom: 1px solid #0d1e30;
+      padding: 9px 14px; cursor: pointer; text-align: left; transition: background 0.15s;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-item:hover { background: #0d1a28; }
+    .history-icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+    .history-preview { flex: 1; font-size: 10px; color: #607888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-time { font-size: 9px; color: #2a4060; flex-shrink: 0; }
+
+    .footer { text-align: center; margin-top: 32px; font-family: 'Rajdhani', sans-serif; font-size: 8px; color: #0d1e30; letter-spacing: 3px; }
+
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+    @keyframes scan  { 0%{top:-5px}100%{top:calc(100% + 5px)} }
+    @keyframes blink { 0%,100%{opacity:1}49%,51%{opacity:0} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)} }
+    .slide-up { animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards; }
+    .blink-cursor::after { content:'_'; animation: blink 1s step-end infinite; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #050a10; }
+    ::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
+  </style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div id="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-sub">◈ &nbsp; AUTOMATED COMMUNITY ENFORCEMENT &nbsp; ◈</div>
+    <h1>MOD·SENTINEL</h1>
+    <div class="header-version">THREAT ASSESSMENT ENGINE &nbsp;·&nbsp; v2.0</div>
+    <div class="status-row">
+      <div class="status-dot" id="status-dot"></div>
+      <span class="status-label" id="status-label">ONLINE</span>
+    </div>
+  </div>
+
+  <!-- API Key panel -->
+  <div class="panel" id="key-panel">
+    <div class="panel-body">
+      <div class="section-label">⬡ &nbsp; ANTHROPIC API KEY</div>
+      <p class="key-hint">
+        Required to run analysis. Stored only in your browser — never sent anywhere except directly to Anthropic.
+        Get one at <a href="https://console.anthropic.com" target="_blank" rel="noreferrer">console.anthropic.com</a>
+      </p>
+      <div class="key-input-row">
+        <input class="key-input" type="password" id="key-input" placeholder="sk-ant-api03-..." autocomplete="off" />
+        <button class="key-save-btn" id="key-save-btn" disabled>SAVE</button>
+      </div>
+      <div class="key-error" id="key-error">⚠ Key should start with sk-ant-</div>
+    </div>
+  </div>
+  <button class="key-set-btn" id="key-toggle-btn">✓ API KEY SET — CHANGE</button>
+
+  <!-- Rules -->
+  <div style="margin-bottom:12px">
+    <button class="toggle-btn" id="rules-toggle">
+      <span style="display:flex;align-items:center;gap:8px">
+        <span style="color:#0055aa;font-size:14px">⬡</span>
+        SERVER RULES
+        <span style="color:#1e3a50;font-size:9px" id="rules-count">5 LOADED</span>
+      </span>
+      <span class="toggle-arrow" id="rules-arrow">▶</span>
+    </button>
+    <div class="toggle-body" id="rules-body">
+      <textarea id="rules-input" rows="7" placeholder="Enter server rules, one per line...">1. No hate speech or discrimination
+2. No spamming or flooding
+3. No NSFW content
+4. Be respectful to all members
+5. No sharing personal information</textarea>
+    </div>
+  </div>
+
+  <!-- Evidence Input -->
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-body">
+      <div class="section-label">⬡ &nbsp; EVIDENCE INPUT</div>
+      <div class="tabs">
+        <button class="tab-btn active" id="tab-message">✉ Message</button>
+        <button class="tab-btn" id="tab-screenshot">▣ Screenshot</button>
+      </div>
+      <div id="pane-message">
+        <textarea id="msg-input" rows="5" placeholder="Paste the message to analyze..."></textarea>
+        <div class="char-row">
+          <span id="char-count" style="color:#2a4060">0 CHARS</span>
+          <span style="font-size:9px;color:#1a3050">⌘↵ TO ANALYZE</span>
+        </div>
+      </div>
+      <div id="pane-screenshot" style="display:none">
+        <div class="drop-zone" id="drop-zone">
+          <img id="preview-img" alt="preview" style="display:none;max-height:180px;max-width:100%;border-radius:6px;margin-bottom:10px;border:1px solid #142236" />
+          <div id="preview-name" style="font-size:10px;color:#405870"></div>
+          <div id="preview-replace" style="display:none;font-size:9px;color:#1a3050;margin-top:4px;font-family:'Rajdhani',sans-serif;letter-spacing:2px">CLICK TO REPLACE</div>
+          <div id="drop-placeholder">
+            <div class="drop-zone-icon">⬡</div>
+            <div class="drop-zone-label">DROP SCREENSHOT HERE</div>
+            <div class="drop-zone-sub">or click to browse</div>
+          </div>
+        </div>
+        <input type="file" id="file-input" accept="image/*" style="display:none" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Analyze -->
+  <button id="analyze-btn" disabled>◈ &nbsp; RUN ANALYSIS</button>
+
+  <!-- Scan -->
+  <div id="scan-box">
+    <div class="scanbar"></div>
+    <div class="scan-text blink-cursor">◈ SCANNING</div>
+    <div class="scan-sub">CROSS-REFERENCING RULE DATABASE</div>
+  </div>
+
+  <!-- Result -->
+  <div id="result-box" class="panel">
+    <div class="panel-body">
+      <div class="result-header">
+        <div class="section-label" style="margin-bottom:0">⬡ &nbsp; VERDICT</div>
+        <button class="copy-btn" id="copy-btn">⎘ &nbsp; COPY REPORT</button>
+      </div>
+      <div class="verdict-grid">
+        <div class="ring-wrap">
+          <svg width="96" height="96" style="display:block;margin:0 auto;overflow:visible">
+            <circle cx="48" cy="48" r="38" fill="none" stroke="#0d1a28" stroke-width="7"/>
+            <circle id="score-ring" cx="48" cy="48" r="38" fill="none" stroke="#00e87a" stroke-width="7"
+              stroke-linecap="round" stroke-dasharray="238.76" stroke-dashoffset="238.76"
+              style="transition:stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"
+              transform="rotate(-90 48 48)"/>
+            <text id="score-num" x="48" y="44" text-anchor="middle" fill="#00e87a" font-size="22" font-weight="700" font-family="'Share Tech Mono',monospace">0</text>
+            <text x="48" y="58" text-anchor="middle" fill="#3d5570" font-size="9" font-family="'Share Tech Mono',monospace">/100</text>
+          </svg>
+          <div class="ring-label">THREAT SCORE</div>
+        </div>
+        <div class="verdict-cards">
+          <div class="verdict-card" id="sev-card">
+            <span id="sev-icon" style="font-size:22px"></span>
+            <div>
+              <div class="card-sub">SEVERITY</div>
+              <div class="card-label" id="sev-label"></div>
+            </div>
+          </div>
+          <div class="verdict-card" id="act-card">
+            <div class="action-dot" id="act-dot"></div>
+            <div>
+              <div class="card-sub">ACTION</div>
+              <div class="card-label" id="act-label" style="font-family:'Rajdhani',sans-serif;font-size:13px;letter-spacing:2px"></div>
+              <div class="card-desc" id="act-desc"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="conf-wrap">
+        <div class="conf-row">
+          <span class="conf-label">CONFIDENCE</span>
+          <span style="font-size:9px;color:#3a5870" id="conf-val"></span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" id="conf-bar" style="background:linear-gradient(90deg,#0055aa,#0088ff);box-shadow:0 0 6px #0055aa88"></div>
+        </div>
+      </div>
+      <div id="violations-wrap" style="margin-bottom:16px;display:none">
+        <div class="result-section-label">RULES VIOLATED</div>
+        <div id="violations-tags"></div>
+      </div>
+      <div id="quote-wrap" style="margin-bottom:16px;display:none">
+        <div class="result-section-label">FLAGGED EXCERPT</div>
+        <div class="quote-box" id="quote-text"></div>
+      </div>
+      <div class="result-section-label">ANALYSIS</div>
+      <div class="reasoning-box" id="reasoning-text"></div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div id="history-wrap">
+    <button class="toggle-btn" id="history-toggle">
+      <span style="display:flex;align-items:center;gap:8px">
+        <span style="color:#0055aa;font-size:14px">⬡</span>
+        RECENT ANALYSES
+        <span style="color:#1e3a50;font-size:9px" id="history-count"></span>
+      </span>
+      <span class="toggle-arrow" id="history-arrow">▶</span>
+    </button>
+    <div class="toggle-body" id="history-body" style="padding:0">
+      <div id="history-list"></div>
+    </div>
+  </div>
+
+  <div class="footer">MOD·SENTINEL &nbsp;◈&nbsp; POWERED BY CLAUDE AI &nbsp;◈&nbsp; ADVISORY USE ONLY</div>
+</div>
+
+<script>
+var SEV = {
+  clean:    { color:"#00e87a", bg:"#00e87a12", label:"ALL CLEAR", icon:"✓" },
+  mild:     { color:"#f5c518", bg:"#f5c51812", label:"MILD",      icon:"⚠" },
+  moderate: { color:"#ff8c00", bg:"#ff8c0012", label:"MODERATE",  icon:"⚡" },
+  severe:   { color:"#ff3b5c", bg:"#ff3b5c12", label:"SEVERE",    icon:"✕" },
+  critical: { color:"#ff0040", bg:"#ff004018", label:"CRITICAL",  icon:"☠" }
+};
+var ACT = {
+  none: { color:"#00e87a", label:"NO ACTION", desc:"Content is acceptable" },
+  warn: { color:"#f5c518", label:"WARN USER", desc:"Issue a formal warning" },
+  mute: { color:"#ff8c00", label:"MUTE",      desc:"Temporarily silence" },
+  kick: { color:"#ff3b5c", label:"KICK",      desc:"Remove from server" },
+  ban:  { color:"#ff0040", label:"PERM BAN",  desc:"Permanently removed" }
+};
+
+var apiKey = "";
+var activeTab = "message";
+var imageFile = null;
+var imageBase64 = null;
+var history = [];
+var lastResult = null;
+var isLoading = false;
+
+function g(id) { return document.getElementById(id); }
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── API Key ──────────────────────────────────────────────
+try { apiKey = localStorage.getItem("mod_sentinel_key") || ""; } catch(e) {}
+
+function refreshKeyUI() {
+  if (apiKey) {
+    g("key-panel").style.display = "none";
+    g("key-toggle-btn").style.display = "block";
+  } else {
+    g("key-panel").style.display = "block";
+    g("key-toggle-btn").style.display = "none";
+  }
+  refreshBtn();
+}
+
+g("key-input").addEventListener("input", function() {
+  var v = this.value.trim();
+  var ok = v.startsWith("sk-ant-");
+  g("key-save-btn").disabled = !ok;
+  g("key-error").style.display = (v && !ok) ? "block" : "none";
+});
+
+g("key-save-btn").addEventListener("click", function() {
+  var v = g("key-input").value.trim();
+  if (!v.startsWith("sk-ant-")) return;
+  apiKey = v;
+  try { localStorage.setItem("mod_sentinel_key", v); } catch(e) {}
+  refreshKeyUI();
+});
+
+g("key-toggle-btn").addEventListener("click", function() {
+  g("key-panel").style.display = "block";
+  g("key-toggle-btn").style.display = "none";
+  g("key-input").value = apiKey;
+  g("key-save-btn").disabled = false;
+});
+
+refreshKeyUI();
+
+// ── Rules ────────────────────────────────────────────────
+g("rules-toggle").addEventListener("click", function() {
+  var open = g("rules-body").classList.toggle("open");
+  this.classList.toggle("open", open);
+  g("rules-arrow").classList.toggle("open", open);
+});
+g("rules-input").addEventListener("input", function() {
+  var n = this.value.split("\n").filter(function(r){ return r.trim(); }).length;
+  g("rules-count").textContent = n + " LOADED";
+  refreshBtn();
+});
+
+// ── Tabs ─────────────────────────────────────────────────
+g("tab-message").addEventListener("click", function() { switchTab("message"); });
+g("tab-screenshot").addEventListener("click", function() { switchTab("screenshot"); });
+
+function switchTab(tab) {
+  activeTab = tab;
+  g("pane-message").style.display = tab === "message" ? "block" : "none";
+  g("pane-screenshot").style.display = tab === "screenshot" ? "block" : "none";
+  g("tab-message").classList.toggle("active", tab === "message");
+  g("tab-screenshot").classList.toggle("active", tab === "screenshot");
+  refreshBtn();
+}
+
+// ── Message input ────────────────────────────────────────
+g("msg-input").addEventListener("input", function() {
+  var n = this.value.length;
+  var el = g("char-count");
+  el.textContent = n + " CHARS";
+  el.style.color = n > 800 ? "#ff3b5c" : n > 500 ? "#f5c518" : "#2a4060";
+  refreshBtn();
+});
+g("msg-input").addEventListener("keydown", function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doAnalyze(); }
+});
+document.addEventListener("keydown", function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !g("analyze-btn").disabled) doAnalyze();
+});
+
+// ── Image upload ─────────────────────────────────────────
+function handleFile(file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  imageFile = file;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    imageBase64 = e.target.result.split(",")[1];
+    var img = g("preview-img");
+    img.src = e.target.result;
+    img.style.display = "block";
+    g("preview-name").textContent = file.name;
+    g("preview-replace").style.display = "block";
+    g("drop-placeholder").style.display = "none";
+    refreshBtn();
+  };
+  reader.readAsDataURL(file);
+}
+
+g("drop-zone").addEventListener("click", function() { g("file-input").click(); });
+g("file-input").addEventListener("change", function() { handleFile(this.files[0]); });
+g("drop-zone").addEventListener("dragover", function(e) { e.preventDefault(); this.classList.add("over"); });
+g("drop-zone").addEventListener("dragleave", function() { this.classList.remove("over"); });
+g("drop-zone").addEventListener("drop", function(e) {
+  e.preventDefault(); this.classList.remove("over");
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// ── Button state ─────────────────────────────────────────
+function refreshBtn() {
+  var hasContent = activeTab === "message"
+    ? g("msg-input").value.trim() !== ""
+    : imageBase64 !== null;
+  g("analyze-btn").disabled = isLoading || !apiKey || !g("rules-input").value.trim() || !hasContent;
+}
+
+function setLoading(val) {
+  isLoading = val;
+  g("status-dot").classList.toggle("active", val);
+  g("status-label").textContent = val ? "PROCESSING" : "ONLINE";
+  g("scan-box").style.display = val ? "block" : "none";
+  g("analyze-btn").textContent = val ? "◈   ANALYZING THREAT..." : "◈   RUN ANALYSIS";
+  refreshBtn();
+}
+
+// ── Analyze ──────────────────────────────────────────────
+g("analyze-btn").addEventListener("click", doAnalyze);
+
+function doAnalyze() {
+  if (isLoading || !apiKey || !g("rules-input").value.trim()) return;
+  if (activeTab === "message" && !g("msg-input").value.trim()) return;
+  if (activeTab === "screenshot" && !imageBase64) return;
+
+  setLoading(true);
+  g("result-box").style.display = "none";
+
+  var rules = g("rules-input").value.trim();
+  var userContent = [];
+
+  if (activeTab === "screenshot") {
+    userContent.push({ type:"image", source:{ type:"base64", media_type: imageFile.type, data: imageBase64 } });
+    userContent.push({ type:"text", text:"Analyze this screenshot for rule violations." });
+  } else {
+    userContent.push({ type:"text", text:'Message to analyze: "' + g("msg-input").value + '"' });
+  }
+
+  var system = "You are a strict server moderation AI. Analyze messages or screenshots for rule violations.\n\nSERVER RULES:\n" + rules + "\n\nRespond ONLY with valid JSON (no markdown):\n{\"severity\":\"clean\"|\"mild\"|\"moderate\"|\"severe\"|\"critical\",\"action\":\"none\"|\"warn\"|\"mute\"|\"kick\"|\"ban\",\"score\":0-100,\"violations\":[],\"reasoning\":\"string\",\"quote\":\"string or null\",\"confidence\":0-100}\nSeverity: clean(0-10) mild(11-30) moderate(31-60) severe(61-85) critical(86-100)";
+
+  fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+      system: system,
+      messages: [{ role:"user", content: userContent }]
+    })
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) {
+    if (data.error) throw new Error(data.error.message || data.error.type);
+    var raw = "";
+    for (var i = 0; i < data.content.length; i++) {
+      if (data.content[i].type === "text") { raw = data.content[i].text; break; }
+    }
+    raw = raw.replace(/```json|```/g,"").trim();
+    var parsed = JSON.parse(raw);
+    showResult(parsed);
+
+    var preview = activeTab === "message"
+      ? g("msg-input").value.slice(0,60) + (g("msg-input").value.length > 60 ? "…" : "")
+      : "[Screenshot] " + (imageFile ? imageFile.name : "image");
+    history.unshift({ ts: Date.now(), preview: preview, result: parsed, msg: activeTab === "message" ? g("msg-input").value : null });
+    if (history.length > 8) history.pop();
+    renderHistory();
+    setLoading(false);
+  })
+  .catch(function(err) {
+    setLoading(false);
+    var box = g("result-box");
+    box.style.display = "block";
+    box.innerHTML = '<div class="panel-body"><div class="error-msg">⚠ ' + escHtml(err.message || "Analysis failed. Check your API key.") + '</div></div>';
+    box.classList.remove("slide-up");
+    void box.offsetWidth;
+    box.classList.add("slide-up");
+  });
+}
+
+// ── Show result ──────────────────────────────────────────
+function showResult(r) {
+  lastResult = r;
+  var sev = SEV[r.severity] || SEV.clean;
+  var act = ACT[r.action] || ACT.none;
+  var circ = 2 * Math.PI * 38;
+
+  // Restore panel HTML if it was overwritten by error
+  var box = g("result-box");
+  if (!g("score-ring")) location.reload(); // safety fallback
+
+  // Score ring
+  var ring = g("score-ring");
+  ring.setAttribute("stroke", sev.color);
+  ring.style.filter = "drop-shadow(0 0 6px " + sev.color + "66)";
+  g("score-num").textContent = r.score;
+  g("score-num").setAttribute("fill", sev.color);
+  setTimeout(function() {
+    ring.setAttribute("stroke-dashoffset", circ - (r.score / 100) * circ);
+  }, 60);
+
+  // Severity
+  var sc = g("sev-card");
+  sc.style.background = sev.bg;
+  sc.style.border = "1px solid " + sev.color + "33";
+  g("sev-icon").textContent = sev.icon;
+  g("sev-icon").style.color = sev.color;
+  g("sev-label").textContent = sev.label;
+  g("sev-label").style.color = sev.color;
+
+  // Action
+  var ac = g("act-card");
+  ac.style.background = act.color + "0e";
+  ac.style.border = "1px solid " + act.color + "30";
+  var dot = g("act-dot");
+  dot.style.background = act.color;
+  dot.style.boxShadow = "0 0 8px " + act.color;
+  g("act-label").textContent = act.label;
+  g("act-label").style.color = act.color;
+  g("act-desc").textContent = act.desc;
+
+  // Confidence
+  if (r.confidence != null) {
+    g("conf-wrap").style.display = "block";
+    g("conf-val").textContent = r.confidence + "%";
+    setTimeout(function() { g("conf-bar").style.width = r.confidence + "%"; }, 60);
+  } else {
+    g("conf-wrap").style.display = "none";
+  }
+
+  // Violations
+  if (r.violations && r.violations.length) {
+    g("violations-wrap").style.display = "block";
+    g("violations-tags").innerHTML = r.violations.map(function(v) {
+      return '<span class="vtag">⚑ ' + escHtml(v) + '</span>';
+    }).join("");
+  } else {
+    g("violations-wrap").style.display = "none";
+  }
+
+  // Quote
+  if (r.quote) {
+    g("quote-wrap").style.display = "block";
+    g("quote-text").style.borderLeft = "3px solid " + sev.color;
+    g("quote-text").textContent = '"' + r.quote + '"';
+  } else {
+    g("quote-wrap").style.display = "none";
+  }
+
+  g("reasoning-text").textContent = r.reasoning;
+
+  box.style.display = "block";
+  box.classList.remove("slide-up");
+  void box.offsetWidth;
+  box.classList.add("slide-up");
+}
+
+// ── Copy ─────────────────────────────────────────────────
+g("copy-btn").addEventListener("click", function() {
+  if (!lastResult) return;
+  var sev = SEV[lastResult.severity] ? SEV[lastResult.severity].label : lastResult.severity;
+  var act = ACT[lastResult.action] ? ACT[lastResult.action].label : lastResult.action;
+  var lines = [
+    "MOD·SENTINEL REPORT",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "Severity: " + sev,
+    "Action:   " + act,
+    "Score:    " + lastResult.score + "/100"
+  ];
+  if (lastResult.violations && lastResult.violations.length) lines.push("Violations: " + lastResult.violations.join(", "));
+  if (lastResult.quote) lines.push('Flagged: "' + lastResult.quote + '"');
+  lines.push("Analysis: " + lastResult.reasoning);
+  var btn = this;
+  navigator.clipboard.writeText(lines.join("\n")).then(function() {
+    btn.classList.add("done");
+    btn.textContent = "✓  COPIED";
+    setTimeout(function() { btn.classList.remove("done"); btn.textContent = "⎘  COPY REPORT"; }, 2000);
+  });
+});
+
+// ── History ──────────────────────────────────────────────
+g("history-toggle").addEventListener("click", function() {
+  var open = g("history-body").classList.toggle("open");
+  this.classList.toggle("open", open);
+  g("history-arrow").classList.toggle("open", open);
+});
+
+function renderHistory() {
+  if (!history.length) { g("history-wrap").style.display = "none"; return; }
+  g("history-wrap").style.display = "block";
+  g("history-count").textContent = history.length + " ENTRIES";
+  g("history-list").innerHTML = history.map(function(item, i) {
+    var sev = SEV[item.result.severity] || SEV.clean;
+    var ts = new Date(item.ts).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+    return '<button class="history-item" onclick="restoreHistory(' + i + ')">' +
+      '<span class="history-icon" style="color:' + sev.color + '">' + sev.icon + '</span>' +
+      '<span class="history-preview">' + escHtml(item.preview) + '</span>' +
+      '<span class="history-time">' + ts + '</span>' +
+      '</button>';
+  }).join("");
+}
+
+function restoreHistory(i) {
+  var item = history[i];
+  if (!item) return;
+  if (item.msg) { g("msg-input").value = item.msg; switchTab("message"); }
+  showResult(item.result);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+</script>
+</body>
+</html>
